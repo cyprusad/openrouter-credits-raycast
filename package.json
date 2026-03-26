@@ -1,0 +1,35 @@
+{
+  "name": "openrouter-credits",
+  "title": "OpenRouter Credits",
+  "description": "Monitor your OpenRouter API credits in the menu bar",
+  "icon": "command-icon.png",
+  "author": "Your Name",
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "openrouter-credits",
+      "title": "OpenRouter Credits",
+      "description": "Display current OpenRouter credits balance",
+      "mode": "menu-bar",
+      "interval": "15m"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.64.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.8",
+    "@types/node": "20.10.6",
+    "@types/react": "18.2.46",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.3"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "publish": "npx @raycast/api@latest publish"
+  }
+}
