@@ -3,8 +3,17 @@
   "title": "OpenRouter Credits",
   "description": "Monitor your OpenRouter API credits in the menu bar",
   "icon": "command-icon.png",
-  "author": "Your Name",
+  "author": "cyprusad",
   "license": "MIT",
+  "preferences": [
+    {
+      "name": "apiKey",
+      "title": "Management API Key",
+      "description": "Go to https://openrouter.ai/settings/management-keys to create a management API key (not your regular API key). This key is used to read your credit balance.",
+      "type": "password",
+      "required": true
+    }
+  ],
   "commands": [
     {
       "name": "openrouter-credits",
@@ -15,12 +24,12 @@
     }
   ],
   "dependencies": {
-    "@raycast/api": "^1.64.0"
+    "@raycast/api": "^1.104.11"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^1.0.8",
     "@types/node": "20.10.6",
-    "@types/react": "18.2.46",
+    "@types/react": "^18.0.0",
     "eslint": "^8.56.0",
     "prettier": "^3.1.1",
     "typescript": "^5.3.3"
