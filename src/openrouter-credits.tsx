@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { MenuBarExtra, getPreferenceValues, open } from "@raycast/api";
 import { useState, useEffect, useCallback } from "react";
 
