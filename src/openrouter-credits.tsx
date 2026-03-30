@@ -1,10 +1,14 @@
-// @ts-nocheck
 import { MenuBarExtra, getPreferenceValues, open } from "@raycast/api";
 import { useState, useEffect, useCallback } from "react";
 
 const CACHE_KEY = "openrouter_credits";
 
-function getCachedCredits() {
+interface CreditsData {
+  total_credits: number;
+  total_usage: number;
+}
+
+function getCachedCredits(): CreditsData | null {
   try {
     const cached = localStorage.getItem(CACHE_KEY);
     return cached ? JSON.parse(cached) : null;
@@ -13,7 +17,7 @@ function getCachedCredits() {
   }
 }
 
-function setCachedCredits(data: any) {
+function setCachedCredits(data: CreditsData): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(data));
   } catch {
@@ -36,12 +40,6 @@ interface CreditsResponse {
 
 function formatCurrency(amount: number): string {
   return `$${amount.toFixed(2)}`;
-}
-
-function getRemainingColor(remaining: number): string {
-  if (remaining <= 0) return "#FF0000";
-  if (remaining <= 5) return "#FFCC00";
-  return "#00CC00";
 }
 
 export default function Command() {
@@ -104,7 +102,6 @@ export default function Command() {
   }, [apiKey]);
 
   const remaining = credits ? credits.total_credits - credits.total_usage : 0;
-  const color = getRemainingColor(remaining);
   const title = credits ? formatCurrency(remaining) : error || "--";
 
   return (
