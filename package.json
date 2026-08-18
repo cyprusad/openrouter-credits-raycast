@@ -1,38 +1,72 @@
 {
   "name": "openrouter-credits",
   "title": "OpenRouter Credits",
-  "description": "Monitor your OpenRouter API credits in the menu bar",
-  "icon": "assets/command-icon.png",
+  "description": "Show your OpenRouter credit balance in the menu bar and get low-balance alerts.",
+  "icon": "command-icon.png",
   "author": "cyprusad",
   "license": "MIT",
+  "platforms": [
+    "macOS"
+  ],
   "categories": [
     "Finance"
+  ],
+  "keywords": [
+    "openrouter",
+    "credits",
+    "balance",
+    "api",
+    "usage"
   ],
   "preferences": [
     {
       "name": "apiKey",
       "title": "Management API Key",
-      "description": "Go to https://openrouter.ai/settings/management-keys to create a management API key (not your regular API key). This key is used to read your credit balance.",
+      "description": "Create a key with the Get Management API Key menu action, then paste it here. A regular inference API key cannot read credit data.",
       "type": "password",
-      "required": true
+      "required": false
+    },
+    {
+      "name": "lowBalanceNotifications",
+      "title": "Low-Balance Alerts",
+      "description": "Show a Raycast notification when your balance reaches the alert amount.",
+      "type": "checkbox",
+      "label": "Notify me about a low balance",
+      "default": true,
+      "required": false
+    },
+    {
+      "name": "lowBalanceThreshold",
+      "title": "Low-Balance Alert Amount",
+      "description": "Send an alert when the remaining balance is at or below this USD amount.",
+      "type": "textfield",
+      "placeholder": "5.00",
+      "default": "5.00",
+      "required": false
     }
   ],
   "commands": [
     {
       "name": "openrouter-credits",
-      "title": "OpenRouter Credits",
-      "description": "Display current OpenRouter credits balance in the menu bar",
+      "title": "OpenRouter Credit Balance",
+      "description": "Show your current OpenRouter credit balance in the menu bar",
       "mode": "menu-bar",
       "interval": "15m"
+    },
+    {
+      "name": "openrouter-credit-dashboard",
+      "title": "OpenRouter Credit Dashboard",
+      "description": "View your OpenRouter balance and lifetime credit analytics",
+      "mode": "view"
     }
   ],
   "dependencies": {
-    "@raycast/api": "^1.104.11"
+    "@raycast/api": "^1.104.24"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^1.0.8",
     "@types/node": "20.10.6",
-    "@types/react": "^18.0.0",
+    "@types/react": "^19.2.18",
     "eslint": "^8.56.0",
     "prettier": "^3.1.1",
     "sharp": "^0.34.5",
@@ -43,6 +77,6 @@
     "dev": "ray develop",
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
-    "publish": "npx @raycast/api@latest publish"
+    "publish": "ray publish"
   }
 }

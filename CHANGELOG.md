@@ -2,8 +2,7 @@
 
 ## [Initial Release] - {PR_MERGE_DATE}
 
-- Initial release
-- Menu bar display of OpenRouter credits balance
-- Automatic refresh every 15 minutes
-- Color-coded balance indicators (green/yellow/red)
-- Quick access to OpenRouter dashboard
+- Show remaining OpenRouter credit balance in the menu bar.
+- Add configurable low-balance alerts with a `$5.00` default threshold.
+- Show clearly labeled lifetime credits purchased and usage totals.
+- Add manual refresh and quick access to OpenRouter and extension preferences.

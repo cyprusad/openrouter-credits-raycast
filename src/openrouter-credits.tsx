@@ -1,154 +1,245 @@
-// @ts-nocheck
-import { MenuBarExtra, getPreferenceValues, open } from "@raycast/api";
-import { useState, useEffect, useCallback } from "react";
+import {
+  Color,
+  getPreferenceValues,
+  launchCommand,
+  LaunchType,
+  LocalStorage,
+  MenuBarExtra,
+  open,
+  openExtensionPreferences,
+  showToast,
+  Toast,
+} from "@raycast/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  CreditsData,
+  fetchCredits as fetchOpenRouterCredits,
+  formatCurrency,
+  isCreditsData,
+} from "./openrouter";
 
 const CACHE_KEY = "openrouter_credits";
+const DEFAULT_LOW_BALANCE_THRESHOLD = 5;
+const LOW_BALANCE_NOTIFICATION_KEY = "openrouter_low_balance_notification";
 
-interface CreditsData {
-  total_credits: number;
-  total_usage: number;
-}
-
-function getCachedCredits(): CreditsData | null {
-  try {
-    const cached = localStorage.getItem(CACHE_KEY);
-    return cached ? JSON.parse(cached) : null;
-  } catch {
-    return null;
-  }
-}
-
-function setCachedCredits(data: CreditsData): void {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-  } catch {
-    // Ignore
-  }
+interface CachedCredits {
+  data: CreditsData;
 }
 
 interface Preferences {
   apiKey: string;
+  lowBalanceNotifications?: boolean;
+  lowBalanceThreshold?: string;
 }
 
-interface CreditsData {
-  total_credits: number;
-  total_usage: number;
+function parseLowBalanceThreshold(value: string | undefined): number | null {
+  const input = value?.trim() || String(DEFAULT_LOW_BALANCE_THRESHOLD);
+
+  const threshold = Number(input);
+  return Number.isFinite(threshold) && threshold >= 0 ? threshold : null;
 }
 
-interface CreditsResponse {
-  data: CreditsData;
-}
+function parseCachedCredits(value: string | undefined): CreditsData | null {
+  if (!value) return null;
 
-function formatCurrency(amount: number): string {
-  return `$${amount.toFixed(2)}`;
+  try {
+    const parsed: unknown = JSON.parse(value);
+
+    if (isCreditsData(parsed)) return parsed;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      isCreditsData((parsed as CachedCredits).data)
+    ) {
+      return (parsed as CachedCredits).data;
+    }
+  } catch {
+    // Ignore invalid cached data and retrieve a fresh balance instead.
+  }
+
+  return null;
 }
 
 export default function Command() {
-  const [credits, setCredits] = useState<CreditsData | null>(getCachedCredits);
-  const [isLoading, setIsLoading] = useState(!credits);
+  const [credits, setCredits] = useState<CreditsData | null>(null);
+  const [isCacheLoaded, setIsCacheLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const lowBalanceCheckInFlight = useRef(false);
+  const { apiKey, lowBalanceNotifications, lowBalanceThreshold } =
+    getPreferenceValues<Preferences>();
+  const alertThreshold = parseLowBalanceThreshold(lowBalanceThreshold);
+  const alertsEnabled = lowBalanceNotifications !== false;
+  const needsApiKey = !apiKey;
 
-  const { apiKey } = getPreferenceValues<Preferences>();
+  useEffect(() => {
+    void LocalStorage.getItem<string>(CACHE_KEY)
+      .then((cached) => {
+        const cachedCredits = parseCachedCredits(cached);
+        if (cachedCredits) setCredits(cachedCredits);
+      })
+      .catch(() => {
+        // A cache failure should never prevent a live API request.
+      })
+      .finally(() => setIsCacheLoaded(true));
+  }, []);
+
+  const updateLowBalanceNotification = useCallback(
+    async (remaining: number) => {
+      if (lowBalanceCheckInFlight.current) return;
+
+      lowBalanceCheckInFlight.current = true;
+
+      try {
+        if (
+          !alertsEnabled ||
+          alertThreshold === null ||
+          remaining > alertThreshold
+        ) {
+          await LocalStorage.removeItem(LOW_BALANCE_NOTIFICATION_KEY);
+          return;
+        }
+
+        const notificationThreshold = formatCurrency(alertThreshold);
+        const notifiedAtThreshold = await LocalStorage.getItem<string>(
+          LOW_BALANCE_NOTIFICATION_KEY,
+        );
+
+        if (notifiedAtThreshold === notificationThreshold) return;
+
+        await LocalStorage.setItem(
+          LOW_BALANCE_NOTIFICATION_KEY,
+          notificationThreshold,
+        );
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "OpenRouter balance is low",
+          message: `${formatCurrency(remaining)} remaining (alert at ${notificationThreshold})`,
+        });
+      } catch {
+        // A notification failure must not affect balance updates.
+      } finally {
+        lowBalanceCheckInFlight.current = false;
+      }
+    },
+    [alertThreshold, alertsEnabled],
+  );
 
   const fetchCredits = useCallback(async () => {
     if (!apiKey) {
-      setError("API key not configured");
+      setError("Management API key not configured");
       setIsLoading(false);
       return;
     }
 
+    setIsLoading(true);
+
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/credits", {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("Invalid API key");
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data: CreditsResponse = await response.json();
-      setCredits(data.data);
-      setCachedCredits(data.data);
+      const updatedCredits = await fetchOpenRouterCredits(apiKey);
+      setCredits(updatedCredits);
       setError(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to fetch";
-      setError(message);
+      void LocalStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({ data: updatedCredits }),
+      );
+      void updateLowBalanceNotification(
+        updatedCredits.total_credits - updatedCredits.total_usage,
+      );
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Couldn't fetch balance",
+      );
     } finally {
       setIsLoading(false);
     }
-  }, [apiKey]);
+  }, [apiKey, updateLowBalanceNotification]);
 
   useEffect(() => {
-    fetchCredits();
-  }, [fetchCredits, refreshTrigger]);
+    if (isCacheLoaded) void fetchCredits();
+  }, [fetchCredits, isCacheLoaded]);
 
-  useEffect(() => {
-    if (!apiKey) return;
+  const remaining = credits
+    ? credits.total_credits - credits.total_usage
+    : null;
+  const title = remaining === null ? "--" : formatCurrency(remaining);
+  const tooltip = error
+    ? `OpenRouter Credits: ${error}`
+    : remaining === null
+      ? "OpenRouter Credits"
+      : `OpenRouter Credits: ${formatCurrency(remaining)} remaining`;
 
-    const interval = setInterval(
-      () => {
-        setRefreshTrigger((prev) => prev + 1);
-      },
-      15 * 60 * 1000,
-    );
-
-    return () => clearInterval(interval);
-  }, [apiKey]);
-
-  const remaining = credits ? credits.total_credits - credits.total_usage : 0;
-  const title = credits ? formatCurrency(remaining) : error || "--";
+  async function openDashboard(): Promise<void> {
+    await launchCommand({
+      name: "openrouter-credit-dashboard",
+      type: LaunchType.UserInitiated,
+    });
+  }
 
   return (
     <MenuBarExtra
-      icon={{ source: "💳" }}
+      icon={{ source: "openrouter-mark.svg", tintColor: Color.PrimaryText }}
       title={title}
-      tooltip="OpenRouter Credits"
+      tooltip={tooltip}
       isLoading={isLoading}
     >
-      {error ? (
-        <MenuBarExtra.Item title={`Error: ${error}`} />
-      ) : credits ? (
-        <>
-          <MenuBarExtra.Section title="Balance">
-            <MenuBarExtra.Item
-              title={`Remaining: ${formatCurrency(remaining)}`}
-            />
-            <MenuBarExtra.Item
-              title={`Total: ${formatCurrency(credits.total_credits)}`}
-            />
-          </MenuBarExtra.Section>
-
-          <MenuBarExtra.Section>
-            <MenuBarExtra.Item
-              title="Refresh"
-              shortcut={{ modifiers: ["cmd"], key: "r" }}
-              onAction={() => {
-                setIsLoading(true);
-                setRefreshTrigger((prev) => prev + 1);
-              }}
-            />
-            <MenuBarExtra.Item
-              title="Open OpenRouter"
-              onAction={() => open("https://openrouter.ai")}
-            />
-          </MenuBarExtra.Section>
-        </>
+      {credits && remaining !== null ? (
+        <MenuBarExtra.Section>
+          <MenuBarExtra.Item
+            title="View Balance Dashboard"
+            subtitle={`${formatCurrency(remaining)} available`}
+            onAction={() => void openDashboard()}
+          />
+        </MenuBarExtra.Section>
       ) : null}
 
+      {error ? (
+        <MenuBarExtra.Section title="Status">
+          <MenuBarExtra.Item title={`Couldn't update balance: ${error}`} />
+        </MenuBarExtra.Section>
+      ) : null}
+
+      {needsApiKey ? (
+        <MenuBarExtra.Section title="Set Up">
+          <MenuBarExtra.Item
+            title="1. Get Management API Key"
+            onAction={() =>
+              open("https://openrouter.ai/settings/management-keys")
+            }
+          />
+          <MenuBarExtra.Item
+            title="2. Paste Management API Key..."
+            onAction={() => void openExtensionPreferences()}
+          />
+        </MenuBarExtra.Section>
+      ) : (
+        <MenuBarExtra.Section>
+          {alertsEnabled && alertThreshold !== null ? (
+            <MenuBarExtra.Item
+              title="Low-Balance Alert"
+              subtitle={`At or below ${formatCurrency(alertThreshold)}`}
+            />
+          ) : (
+            <MenuBarExtra.Item title="Low-Balance Alerts Disabled" />
+          )}
+          <MenuBarExtra.Item
+            title="Refresh"
+            shortcut={{ modifiers: ["cmd"], key: "r" }}
+            onAction={() => void fetchCredits()}
+          />
+          <MenuBarExtra.Item
+            title="Open OpenRouter"
+            onAction={() => open("https://openrouter.ai")}
+          />
+        </MenuBarExtra.Section>
+      )}
+
       <MenuBarExtra.Section>
-        <MenuBarExtra.Item
-          title="Preferences"
-          onAction={() =>
-            open("raycast://extensions/openrouter-credits/preferences")
-          }
-        />
+        {!needsApiKey ? (
+          <MenuBarExtra.Item
+            title="Preferences"
+            onAction={() => void openExtensionPreferences()}
+          />
+        ) : null}
         <MenuBarExtra.Item
           title="View Source Code"
           onAction={() => open("https://github.com/cyprusad/openrouter-widget")}
